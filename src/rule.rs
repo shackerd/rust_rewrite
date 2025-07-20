@@ -38,6 +38,14 @@ impl Rule {
         uri
     }
 
+    /// Combines [`Rule::try_match`] with [`Rule::rewrite`] in one step.
+    ///
+    /// Produces a new re-written string if the rewrite rule matched.
+    #[inline]
+    pub fn try_rewrite(&self, uri: &str) -> Option<String> {
+        Some(self.rewrite(self.try_match(uri)?))
+    }
+
     /// Retrieves the associated [`RuleShift`] defined in the
     /// expressions flags if any is present.
     #[inline]
@@ -61,6 +69,7 @@ impl Rule {
 
 impl FromStr for Rule {
     type Err = RuleError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut items = s.split_whitespace().filter(|s| !s.is_empty());
         let pattern = items.next().ok_or(RuleError::MissingPattern)?;
@@ -87,6 +96,7 @@ struct RuleFlagList(Vec<RuleFlag>);
 
 impl FromStr for RuleFlagList {
     type Err = RuleError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if !s.starts_with('[') || !s.ends_with(']') {
             return Err(RuleError::FlagsMissingBrackets);
@@ -176,6 +186,7 @@ impl RuleFlag {
 
 impl FromStr for RuleFlag {
     type Err = RuleError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (p, s) = match s.split_once('=') {
             Some((prefix, suffix)) => (prefix, suffix),
@@ -193,5 +204,61 @@ impl FromStr for RuleFlag {
             "" => Ok(Self::Resolve(RuleResolve::Status(parse_status(s, 403)?))),
             _ => Err(RuleError::InvalidFlag),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compile() {
+        let rule = Rule::from_str(" ^/replace/[A-Z]+/$ - [I,F]").unwrap();
+        assert_eq!(rule.rewrite, "-".to_owned());
+        assert_eq!(rule.flags.len(), 2);
+        assert!(matches!(
+            rule.flags.get(0),
+            Some(RuleFlag::Mod(RuleMod::NoCase))
+        ));
+        assert!(matches!(
+            rule.flags.get(1),
+            Some(RuleFlag::Resolve(RuleResolve::Status(403)))
+        ));
+    }
+
+    #[test]
+    fn test_simple_replace() {
+        let rule = Rule::from_str(r" ^/file/(.*)$ /new/$1 ").unwrap();
+        assert_eq!(rule.try_rewrite("/no/match"), None);
+        assert_eq!(
+            rule.try_rewrite("/file/match"),
+            Some("/new/match".to_owned())
+        );
+        assert_eq!(
+            rule.try_rewrite("/file/multiple/match"),
+            Some("/new/multiple/match".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_multi_replace() {
+        let rule = Rule::from_str(r" ^/file/(\w+)/break/(\w+)$ /new/$2/$1 ").unwrap();
+        assert_eq!(rule.try_rewrite("/file/partial/"), None);
+        assert_eq!(rule.try_rewrite("/file/partial/break/"), None);
+        assert_eq!(rule.try_rewrite("/file/partial/break/test "), None);
+        assert_eq!(
+            rule.try_rewrite("/file/one/break/two"),
+            Some("/new/two/one".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_named_replace() {
+        let rule = Rule::from_str(r" ^/file/(?P<name>\w+)$ /$name ").unwrap();
+        assert_eq!(rule.try_rewrite("/file/"), None);
+        assert_eq!(
+            rule.try_rewrite("/file/named_file"),
+            Some("/named_file".to_owned())
+        );
     }
 }

@@ -114,6 +114,7 @@ impl ExpressionList {
 
 impl FromStr for ExpressionList {
     type Err = ExpressionError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut list = Vec::new();
         let mut group: Vec<Expression> = Vec::new();
@@ -154,6 +155,7 @@ pub enum Expression {
 
 impl FromStr for Expression {
     type Err = ExpressionError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (ident, expr) = s
             .split_once(char::is_whitespace)

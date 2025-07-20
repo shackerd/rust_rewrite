@@ -4,7 +4,7 @@
 //! Designed as a subset of [official](https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritecond)
 //! `RewriteCond` back-references.
 
-use std::{fmt::Debug, net::SocketAddr};
+use std::{fmt::Debug, io, net::ToSocketAddrs};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -20,8 +20,8 @@ macro_rules! get {
 macro_rules! setter {
     ($key:ident, $ref:ident) => {
         #[doc = concat!("Assign value for `", stringify!($ref), "` variable")]
-        pub fn $key(mut self, $key: String) -> Self {
-            self.$key = Some($key);
+        pub fn $key(mut self, $key: &str) -> Self {
+            self.$key = Some($key.to_owned());
             self
         }
     };
@@ -38,20 +38,20 @@ pub struct EngineCtx<'a> {
 
 impl<'a> EngineCtx<'a> {
     /// Assign [`DateCtx`] sub-context to the complete [`EngineCtx`]
-    pub fn date_ctx(mut self, date: Option<&'a DateCtx>) -> Self {
-        self.date = date;
+    pub fn date_ctx(mut self, date: &'a DateCtx) -> Self {
+        self.date = Some(date);
         self
     }
 
     /// Assign [`RequestCtx`] sub-context to the complete [`EngineCtx`]
-    pub fn request_ctx(mut self, request: Option<&'a RequestCtx>) -> Self {
-        self.request = request;
+    pub fn request_ctx(mut self, request: &'a RequestCtx) -> Self {
+        self.request = Some(request);
         self
     }
 
     /// Assign [`ServerCtx`] sub-context to the complete [`EngineCtx`]
-    pub fn server_ctx(mut self, server: Option<&'a ServerCtx>) -> Self {
-        self.server = server;
+    pub fn server_ctx(mut self, server: &'a ServerCtx) -> Self {
+        self.server = Some(server);
         self
     }
 
@@ -151,12 +151,15 @@ impl ServerCtx {
     setter!(server_software, SERVER_SOFTWARE);
 
     /// Assign value for `SERVER_ADDR`, and `SERVER_PORT` variables.
-    pub fn server_addr(mut self, server_addr: impl Into<SocketAddr>) -> Self {
-        let addr: SocketAddr = server_addr.into();
+    pub fn server_addr<A: ToSocketAddrs>(mut self, server_addr: A) -> io::Result<Self> {
+        let addr = server_addr
+            .to_socket_addrs()?
+            .next()
+            .expect("missing socket address");
         self.server_addr = Some(addr.to_string());
         self.server_name = Some(self.server_name.unwrap_or_else(|| addr.ip().to_string()));
         self.server_port = Some(addr.port().to_string());
-        self
+        Ok(self)
     }
 }
 
@@ -177,7 +180,7 @@ impl ServerCtx {
 
 /// All variables and references associated with `REMOTE_` prefix
 /// and other request variables.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RequestCtx {
     auth_type: Option<String>,
     ipv6: Option<String>,
@@ -198,12 +201,15 @@ impl RequestCtx {
     setter!(request_uri, REQUEST_URI);
 
     /// Assign value for `REMOTE_ADDR`, `REMOTE_HOST`, and `REMOTE_PORT` variables.
-    pub fn remote_addr(mut self, remote_addr: impl Into<SocketAddr>) -> Self {
-        let addr: SocketAddr = remote_addr.into();
+    pub fn remote_addr<A: ToSocketAddrs>(mut self, remote_addr: A) -> io::Result<Self> {
+        let addr = remote_addr
+            .to_socket_addrs()?
+            .next()
+            .expect("missing socket address");
         self.remote_addr = Some(addr.to_string());
         self.remote_host = Some(addr.ip().to_string());
         self.remote_port = Some(addr.port().to_string());
-        self
+        Ok(self)
     }
 }
 

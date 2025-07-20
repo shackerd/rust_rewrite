@@ -64,6 +64,7 @@ impl Engine {
 
 impl FromStr for Engine {
     type Err = ExpressionError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let groups = ExpressionList::from_str(s)?.groups();
         Ok(Self { groups })

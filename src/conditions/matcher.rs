@@ -82,9 +82,6 @@ impl Match {
         if let Some(c) = matches_start(expr, &['<', '>', '=']) {
             let (_, second) = expr.split_once(c).ok_or(CondError::InvalidPattern)?;
             let pattern = Pattern::from_str(&expr[..expr.len() - second.len()])?;
-            if tokens.next().is_some() {
-                return Err(CondError::InvalidSuffix);
-            }
             return match not {
                 true => Ok(Self::NotPattern(first, pattern, second.to_owned())),
                 false => Ok(Self::Pattern(first, pattern, second.to_owned())),
@@ -111,6 +108,7 @@ impl Match {
 
 impl FromStr for Match {
     type Err = CondError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut tokens = tokenize(s)?.into_iter().peekable();
         Self::parse(&mut tokens)
@@ -140,6 +138,7 @@ impl Pattern {
 
 impl FromStr for Pattern {
     type Err = CondError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "<" => Ok(Self::Preceeds),
@@ -185,6 +184,7 @@ impl Compare {
 
 impl FromStr for Compare {
     type Err = CondError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "-eq" => Ok(Self::Equal),
@@ -229,6 +229,7 @@ impl FileTest {
 
 impl FromStr for FileTest {
     type Err = CondError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "-d" => Ok(Self::Dir),
@@ -254,10 +255,6 @@ mod tests {
                 Pattern::Equals,
                 String::from("/this/test")
             ))
-        );
-        assert_eq!(
-            Match::from_str(r#" %{REQUEST_URI} "=/this/test" invalid"#).err(),
-            Some(CondError::InvalidSuffix)
         );
     }
 
