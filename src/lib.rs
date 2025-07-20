@@ -1,21 +1,14 @@
 use std::str::FromStr;
 
+mod conditions;
 mod error;
 mod expr;
 mod rule;
 
+pub use conditions::*;
 pub use error::{EngineError, ExpressionError, RuleError};
-pub use expr::{Expression, ExpressionList};
-pub use rule::{RewriteRule, RuleFlag, RuleMod, RuleResolve, RuleShift};
-
-/// [`Engine`] official rewrite result.
-///
-/// Includes either the re-write uri, or the instant http-response.
-#[derive(Debug)]
-pub enum Rewrite {
-    Uri(String),
-    StatusCode(u16),
-}
+pub use expr::{ExprGroup, Expression, ExpressionList, Rewrite};
+pub use rule::{Rule, RuleFlag, RuleMod, RuleResolve, RuleShift};
 
 /// Expression Engine for Proccessing Rewrite Rules
 ///
@@ -25,86 +18,52 @@ pub enum Rewrite {
 /// # Example
 ///
 /// ```
-/// use mod_rewrite::Engine;
+/// use mod_rewrite::{Engine, EngineCtx};
 ///
-/// let engine = Engine::from_rules(r#"
+/// let mut engine = Engine::default();
+/// engine.add_rules(r#"
 ///     Rewrite /file/(.*)     /tmp/$1      [L]
 ///     Rewrite /redirect/(.*) /location/$1 [R=302]
 ///     Rewrite /blocked/(.*)  -            [F]
 /// "#).expect("failed to process rules");
 ///
+/// let ctx = EngineCtx::default();
 /// let uri = "http://localhost/file/my/document.txt".to_owned();
-/// let result = engine.rewrite(uri).unwrap();
+/// let result = engine.rewrite(uri, &ctx).unwrap();
 /// println!("{result:?}");
 /// ```
 #[derive(Debug, Default)]
 pub struct Engine {
-    rules: Vec<RewriteRule>,
+    groups: Vec<ExprGroup>,
 }
 
 impl Engine {
-    /// Generate a new instance of [`Engine`] from a string containing
-    /// `mod_rewrite` expressions.
+    /// Parse additonal [`Expression`]s to append as [`ExprGroup`]s to the
+    /// existing engine.
     #[inline]
-    pub fn from_rules(rules: &str) -> Result<Self, ExpressionError> {
-        Self::from_str(rules)
+    pub fn add_rules(&mut self, rules: &str) -> Result<(), ExpressionError> {
+        let groups = ExpressionList::from_str(rules)?.groups();
+        self.groups.extend(groups);
+        Ok(())
     }
 
-    /// Evaluate the given URI against the engines configured rules
-    /// and generate a rewrite response.
-    pub fn rewrite(&self, mut uri: String) -> Result<Rewrite, EngineError> {
-        let mut next_index = 0;
-        let mut iterations = 0;
-        let max_iterations = self.rules.len() * 10;
-        while iterations < max_iterations {
-            iterations += 1;
-            let Some((index, rule, captures)) = self
-                .rules
-                .iter()
-                .skip(next_index)
-                .enumerate()
-                .find_map(|(i, r)| Some((i, r, r.try_match(&uri)?)))
-            else {
-                break;
+    /// Evaluate the given URI against the configured [`ExprGroup`] instances
+    /// defined and generate a [`Rewrite`] response.
+    pub fn rewrite(&self, mut uri: String, ctx: &EngineCtx) -> Result<Rewrite, EngineError> {
+        for group in self.groups.iter().filter(|g| g.match_conditions(ctx)) {
+            uri = match group.rewrite(uri)? {
+                Rewrite::Uri(uri) => uri,
+                status => return Ok(status),
             };
-
-            uri = rule.rewrite(captures);
-            next_index = index;
-            if let Some(shift) = rule.shift() {
-                match shift {
-                    RuleShift::Next => next_index = 0,
-                    RuleShift::Last => break,
-                    RuleShift::Skip(shift) => next_index += *shift as usize,
-                }
-                continue;
-            }
-            if let Some(resolve) = rule.resolve() {
-                match resolve {
-                    RuleResolve::Status(status) => return Ok(Rewrite::StatusCode(*status)),
-                    RuleResolve::Redirect(status) => {
-                        return Ok(Rewrite::StatusCode(*status));
-                    }
-                }
-            }
         }
-
-        match iterations >= max_iterations {
-            true => Err(EngineError::TooManyIterations),
-            false => Ok(Rewrite::Uri(uri)),
-        }
+        Ok(Rewrite::Uri(uri))
     }
 }
 
 impl FromStr for Engine {
     type Err = ExpressionError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut engine = Self::default();
-        let expr_list = ExpressionList::from_str(s)?;
-        for expr in expr_list.0 {
-            match expr {
-                Expression::Rule(rule) => engine.rules.push(rule),
-            }
-        }
-        Ok(engine)
+        let groups = ExpressionList::from_str(s)?.groups();
+        Ok(Self { groups })
     }
 }

@@ -13,14 +13,14 @@ use super::error::RuleError;
 ///
 /// Supports a subset of [offical](https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewriterule)
 /// mod_rewrite rules.
-#[derive(Debug)]
-pub struct RewriteRule {
+#[derive(Clone, Debug)]
+pub struct Rule {
     pattern: Regex,
     rewrite: String,
     flags: Vec<RuleFlag>,
 }
 
-impl RewriteRule {
+impl Rule {
     /// Try to match the rewrite expression pattern to the specified uri.
     ///
     /// Returns a [`Captures`](regex::Captures) group on successful match.
@@ -60,7 +60,7 @@ impl RewriteRule {
     }
 }
 
-impl FromStr for RewriteRule {
+impl FromStr for Rule {
     type Err = RuleError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut items = s.split_whitespace().filter(|s| !s.is_empty());
@@ -128,21 +128,22 @@ fn parse_status(s: &str, default: u16) -> Result<u16, RuleError> {
 }
 
 /// [`RuleFlag`] subtype declaring shift in rule processing after match
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum RuleShift {
+    End,
     Last,
     Next,
     Skip(u16),
 }
 
 /// [`RuleFlag`] subtype declaring a modification in rewrite behavior
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum RuleMod {
     NoCase,
 }
 
 /// [`RuleFlag`] subtype declaring a final http-response resolution
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum RuleResolve {
     Redirect(u16),
     Status(u16),
@@ -152,7 +153,7 @@ pub enum RuleResolve {
 ///
 /// Supports a subset of [official](https://httpd.apache.org/docs/current/rewrite/flags.html)
 /// mod_rewrite flags.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum RuleFlag {
     Shift(RuleShift),
     Mod(RuleMod),
@@ -182,6 +183,7 @@ impl FromStr for RuleFlag {
             None => (s, ""),
         };
         match p.to_lowercase().as_str() {
+            "e" | "end" => Ok(Self::Shift(RuleShift::End)),
             "l" | "last" => Ok(Self::Shift(RuleShift::Last)),
             "n" | "next" => Ok(Self::Shift(RuleShift::Next)),
             "s" | "skip" => Ok(Self::Shift(RuleShift::Skip(parse_int(s, 1)?))),

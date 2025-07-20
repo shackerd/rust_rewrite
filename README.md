@@ -20,16 +20,18 @@ reimplemented in rust for rust web-services.
 ## Examples
 
 ```rust
-use mod_rewrite::Engine;
+use mod_rewrite::{Engine, EngineCtx};
 
-let engine = Engine::from_rules(r#"
+let mut engine = Engine::default();
+engine.add_rules(r#"
   Rewrite /file/(.*)     /tmp/$1      [L]
   Rewrite /redirect/(.*) /location/$1 [R=302]
   Rewrite /blocked/(.*)  -            [F]
 "#).expect("failed to process rules");
 
+let ctx = EngineCtx::default();
 let uri = "http://localhost/file/my/document.txt".to_owned();
-let result = engine.rewrite(uri).unwrap();
+let result = engine.rewrite(uri, &ctx).unwrap();
 println!("{result:?}");
 ```
 
