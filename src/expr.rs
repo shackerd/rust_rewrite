@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use super::conditions::{Condition, EngineCtx};
 use super::error::{EngineError, ExpressionError};
+use super::extra::State;
 use super::rule::{Rule, RuleResolve, RuleShift};
 
 /// Rewrite result.
@@ -22,6 +23,7 @@ pub enum Rewrite {
 pub struct ExprGroup {
     conditions: Vec<Condition>,
     rules: Vec<Rule>,
+    enabled: bool,
 }
 
 impl ExprGroup {
@@ -33,19 +35,28 @@ impl ExprGroup {
     pub fn new(expressions: Vec<Expression>) -> Self {
         let mut conditions = Vec::new();
         let mut rules = Vec::new();
+        let mut enabled = true;
         for expr in expressions {
             match expr {
                 Expression::Condition(cond) => conditions.push(cond),
                 Expression::Rule(rule) => rules.push(rule),
+                Expression::State(state) => enabled = matches!(state, State::On),
             }
         }
-        Self { conditions, rules }
+        Self {
+            conditions,
+            rules,
+            enabled,
+        }
     }
 
     /// Check all relevant [`Condition`] expressions are met.
     ///
     /// This method guards [`ExprGroup::rewrite`].
     pub fn match_conditions(&self, ctx: &EngineCtx) -> bool {
+        if !self.enabled {
+            return false;
+        }
         let (or, and): (Vec<_>, Vec<_>) = self.conditions.iter().partition(|c| c.is_or());
         or.into_iter().any(|c| c.is_met(ctx)) || and.into_iter().all(|c| c.is_met(ctx))
     }
@@ -127,13 +138,16 @@ impl FromStr for ExpressionList {
                 continue;
             }
             let expr = Expression::from_str(line)?;
-            if matches!(expr, Expression::Condition(_))
-                && group
-                    .last()
-                    .is_some_and(|e| matches!(e, Expression::Rule(_)))
+            if matches!(expr, Expression::State(_))
+                || (matches!(expr, Expression::Condition(_))
+                    && group
+                        .last()
+                        .is_some_and(|e| matches!(e, Expression::Rule(_))))
             {
-                list.push(group.clone());
-                group.clear();
+                if !group.is_empty() {
+                    list.push(group.clone());
+                    group.clear();
+                }
             }
             group.push(expr);
         }
@@ -151,6 +165,7 @@ impl FromStr for ExpressionList {
 pub enum Expression {
     Condition(Condition),
     Rule(Rule),
+    State(State),
 }
 
 impl FromStr for Expression {
@@ -163,6 +178,7 @@ impl FromStr for Expression {
         match ident.to_lowercase().as_str() {
             "rule" | "rewrite" | "rewriterule" => Ok(Self::Rule(Rule::from_str(expr)?)),
             "cond" | "condition" | "rewritecond" => Ok(Self::Condition(Condition::from_str(s)?)),
+            "state" | "engine" | "rewriteengine" => Ok(Self::State(State::from_str(s)?)),
             _ => Err(ExpressionError::InvalidIdentifier),
         }
     }

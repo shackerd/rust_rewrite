@@ -2,7 +2,7 @@ use std::num::ParseIntError;
 
 use derive_more::{Display, Error, From};
 
-use super::conditions::CondError;
+pub use super::conditions::CondError;
 
 /// Errors when running expression engine
 #[derive(Debug, Display, From, Error)]
@@ -19,6 +19,9 @@ pub enum ExpressionError {
 
     #[display("Invalid rule identifier")]
     InvalidIdentifier,
+
+    #[display("Invalid state rule")]
+    InvalidStateRule,
 
     /// Error when parsing condition rule
     ConditionError(CondError),

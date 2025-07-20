@@ -4,7 +4,7 @@ use regex::{Captures, Regex, RegexBuilder};
 
 use super::error::RuleError;
 
-/// Singular `Rewrite` expression definition.
+/// Singular `RewriteRule` expression definition.
 ///
 /// It contains a regex pattern to match against a request uri,
 /// a rewrite string that expands into the new uri, and additional
@@ -161,7 +161,7 @@ pub enum RuleResolve {
 /// Flag Modifiers to a [`Rule`] expression.
 ///
 /// Supports a subset of [official](https://httpd.apache.org/docs/current/rewrite/flags.html)
-/// mod_rewrite flags.
+/// `mod_rewrite` flags.
 #[derive(Clone, Debug)]
 pub enum RuleFlag {
     Shift(RuleShift),
