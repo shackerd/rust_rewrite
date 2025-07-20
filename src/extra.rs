@@ -21,7 +21,7 @@ impl FromStr for State {
         match s.to_lowercase().as_str() {
             "on" => Ok(Self::On),
             "off" => Ok(Self::Off),
-            _ => Err(ExpressionError::InvalidStateRule),
+            _ => Err(ExpressionError::InvalidStateRule(s.to_owned())),
         }
     }
 }

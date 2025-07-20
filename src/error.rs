@@ -1,65 +1,65 @@
 use std::num::ParseIntError;
 
-use derive_more::{Display, Error, From};
+use thiserror::Error;
 
 pub use super::conditions::CondError;
 
 /// Errors when running expression engine
-#[derive(Debug, Display, From, Error)]
+#[derive(Debug, Error)]
 pub enum EngineError {
-    #[display("Too many iterations on rule processing. Infintite loop")]
+    #[error("Too many iterations on rule processing. Infintite loop")]
     TooManyIterations,
 }
 
 /// Errors when parsing all rewrite expressions
-#[derive(Debug, Display, From, Error)]
+#[derive(Debug, Error)]
 pub enum ExpressionError {
-    #[display("Missing expression identifier")]
+    #[error("Missing expression identifier")]
     MissingIdentifier,
 
-    #[display("Invalid rule identifier")]
-    InvalidIdentifier,
+    #[error("Invalid rule identifier")]
+    InvalidIdentifier(String),
 
-    #[display("Invalid state rule")]
-    InvalidStateRule,
+    #[error("Invalid state rule")]
+    InvalidStateRule(String),
 
-    /// Error when parsing condition rule
-    ConditionError(CondError),
+    #[error("Error when parisng condition rule")]
+    ConditionError(#[from] CondError),
 
-    /// Error when parsing rewrite rule
-    RuleError(RuleError),
+    #[error("Error when parisng rewrite rule")]
+    RuleError(#[from] RuleError),
 }
 
 /// Errors when parsing rewrite rules
-#[derive(Debug, Display, From, Error)]
+#[derive(Debug, Error)]
 pub enum RuleError {
-    #[display("Rule is missing a pattern")]
+    #[error("Rule is missing a pattern")]
     MissingPattern,
 
-    #[display("Invalid regex in rule rewrite pattern")]
-    InvalidRegex(regex::Error),
+    #[error("Invalid regex in rule rewrite pattern")]
+    InvalidRegex(#[from] regex::Error),
 
-    #[display("Rule is missing a rewrite expression")]
+    #[error("Rule is missing a rewrite expression")]
     MissingRewrite,
 
-    #[display("Invalid suffix to rule expression")]
-    InvalidSuffix,
+    #[error("Invalid suffix to rule expression")]
+    InvalidSuffix(String),
 
-    #[display("Rule flag definitions missing brackets")]
-    FlagsMissingBrackets,
+    #[error("Rule flag definitions missing brackets")]
+    FlagsMissingBrackets(String),
 
-    #[display("Rule flags empty")]
+    #[error("Rule flags empty")]
     FlagsEmpty,
 
-    #[display("Rule flags used are mutually exclusive")]
+    #[error("Rule flags used are mutually exclusive")]
     FlagsMutuallyExclusive,
 
-    #[display("Invalid flag in rule definition")]
-    InvalidFlag,
+    #[error("Invalid flag in rule definition")]
+    InvalidFlag(String),
 
-    #[display("Invalid number in rule definition")]
-    InvalidFlagNumber(ParseIntError),
+    #[error("Invalid number in rule definition")]
+    InvalidFlagNumber(#[from] ParseIntError),
 
-    #[display("Invalid status code in rule definition")]
-    InvalidFlagStatus,
+    #[error("Invalid status code in rule definition")]
+    InvalidFlagStatus(String),
 }

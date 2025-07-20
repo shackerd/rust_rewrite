@@ -60,6 +60,19 @@ pub struct Engine {
 }
 
 impl Engine {
+    /// Configure max number of loops over entire ruleset during
+    /// rewrite before error
+    ///
+    /// Default is 10
+    pub fn max_iterations(mut self, iterations: usize) -> Self {
+        self.groups = self
+            .groups
+            .into_iter()
+            .map(|g| g.max_iterations(iterations))
+            .collect();
+        self
+    }
+
     /// Parse additonal [`Expression`]s to append as [`ExprGroup`]s to the
     /// existing engine.
     #[inline]

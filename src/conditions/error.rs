@@ -1,38 +1,38 @@
-use derive_more::{Display, Error, From};
+use thiserror::Error;
 
 /// Error when parsing rule condition expression
-#[derive(Debug, Display, From, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 pub enum CondError {
-    #[display("Invalid string pattern expression")]
-    InvalidPattern,
+    #[error("Invalid string pattern expression")]
+    InvalidPattern(String),
 
-    #[display("Invalid comparison expression")]
-    InvalidComparison,
+    #[error("Invalid comparison expression")]
+    InvalidComparison(String),
 
-    #[display("Invalid filetest expression")]
-    InvalidFileTest,
+    #[error("Invalid filetest expression")]
+    InvalidFileTest(String),
 
-    #[display("Quotation never closed in expression")]
-    UnclosedQuotation,
+    #[error("Quotation never closed in expression")]
+    UnclosedQuotation(String),
 
-    #[display("Rule condition expression is empty")]
+    #[error("Rule condition expression is empty")]
     EmptyExpression,
 
-    #[display("Rule conditiion is missing comparison")]
+    #[error("Rule conditiion is missing comparison")]
     MissingComparison,
 
-    #[display("Invalid expression suffix")]
-    InvalidSuffix,
+    #[error("Invalid expression suffix")]
+    InvalidSuffix(String),
 
-    #[display("Missing suffix for comparison")]
+    #[error("Missing suffix for comparison")]
     MissingSuffix,
 
-    #[display("Condition flags missing brackets")]
-    FlagsMissingBrackets,
+    #[error("Condition flags missing brackets")]
+    FlagsMissingBrackets(String),
 
-    #[display("Condition flags are empty")]
+    #[error("Condition flags are empty")]
     FlagsEmpty,
 
-    #[display("Invalid condition flag")]
-    InvalidFlag,
+    #[error("Invalid condition flag")]
+    InvalidFlag(String),
 }

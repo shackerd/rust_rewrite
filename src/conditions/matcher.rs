@@ -80,7 +80,9 @@ impl Match {
         let not = expr.starts_with('!');
         let expr = expr.trim_start_matches('!');
         if let Some(c) = matches_start(expr, &['<', '>', '=']) {
-            let (_, second) = expr.split_once(c).ok_or(CondError::InvalidPattern)?;
+            let (_, second) = expr
+                .split_once(c)
+                .ok_or(CondError::InvalidPattern(expr.to_owned()))?;
             let pattern = Pattern::from_str(&expr[..expr.len() - second.len()])?;
             return match not {
                 true => Ok(Self::NotPattern(first, pattern, second.to_owned())),
@@ -92,7 +94,7 @@ impl Match {
         if second.is_some_and(|s| !s.starts_with('[')) {
             let second = tokens.next().unwrap();
             if not {
-                return Err(CondError::InvalidComparison);
+                return Err(CondError::InvalidComparison(expr.to_owned()));
             }
             let cmp = Compare::from_str(expr)?;
             return Ok(Self::Compare(first, cmp, second.to_owned()));
@@ -146,7 +148,7 @@ impl FromStr for Pattern {
             "=" => Ok(Self::Equals),
             "<=" => Ok(Self::PreceedsOrEquals),
             ">=" => Ok(Self::FollowsOrEquals),
-            _ => Err(CondError::InvalidPattern),
+            _ => Err(CondError::InvalidPattern(s.to_owned())),
         }
     }
 }
@@ -193,7 +195,7 @@ impl FromStr for Compare {
             "-lt" => Ok(Self::LesserThan),
             "-le" => Ok(Self::LesserOrEqual),
             "-ne" => Ok(Self::NotEqual),
-            _ => Err(CondError::InvalidComparison),
+            _ => Err(CondError::InvalidComparison(s.to_owned())),
         }
     }
 }
@@ -237,7 +239,7 @@ impl FromStr for FileTest {
             "-h" | "-l" => Ok(Self::Symbolic),
             "-s" => Ok(Self::SizedFile),
             "-x" => Ok(Self::Executable),
-            _ => Err(CondError::InvalidFileTest),
+            _ => Err(CondError::InvalidFileTest(s.to_owned())),
         }
     }
 }
@@ -268,10 +270,10 @@ mod tests {
                 String::from("4000"),
             ))
         );
-        assert_eq!(
+        assert!(matches!(
             Match::from_str(r#"%{REMOTE_PORT} -wtf 4000 "#).err(),
-            Some(CondError::InvalidComparison)
-        );
+            Some(CondError::InvalidComparison(_))
+        ));
     }
 
     #[test]
@@ -283,9 +285,9 @@ mod tests {
                 FileTest::File,
             ))
         );
-        assert_eq!(
+        assert!(matches!(
             Match::from_str(r#" /var/www/%{REQUEST_URI} !-A "#).err(),
-            Some(CondError::InvalidFileTest)
-        );
+            Some(CondError::InvalidFileTest(_))
+        ));
     }
 }

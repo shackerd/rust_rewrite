@@ -12,7 +12,7 @@ pub(crate) fn end_quote(s: &str, index: usize, quote: char) -> Result<usize, Con
         }
         backslashes = 0;
     }
-    Err(CondError::UnclosedQuotation)
+    Err(CondError::UnclosedQuotation(s[index - 1..].to_owned()))
 }
 
 pub(crate) fn tokenize(s: &str) -> Result<Vec<String>, CondError> {

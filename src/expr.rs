@@ -12,6 +12,7 @@ use super::rule::{Rule, RuleResolve, RuleShift};
 pub enum Rewrite {
     Uri(String),
     EndUri(String),
+    Redirect(String, u16),
     StatusCode(u16),
 }
 
@@ -24,6 +25,7 @@ pub struct ExprGroup {
     conditions: Vec<Condition>,
     rules: Vec<Rule>,
     enabled: bool,
+    max_iterations: usize,
 }
 
 impl ExprGroup {
@@ -47,7 +49,17 @@ impl ExprGroup {
             conditions,
             rules,
             enabled,
+            max_iterations: 10,
         }
+    }
+
+    /// Configure max number of loops over entire ruleset during
+    /// rewrite before error
+    ///
+    /// Default is 10
+    pub fn max_iterations(mut self, iterations: usize) -> Self {
+        self.max_iterations = iterations;
+        self
     }
 
     /// Check all relevant [`Condition`] expressions are met.
@@ -66,8 +78,7 @@ impl ExprGroup {
     pub fn rewrite(&self, mut uri: String) -> Result<Rewrite, EngineError> {
         let mut next_index = 0;
         let mut iterations = 0;
-        let max_iterations = self.rules.len() * 10;
-        while iterations < max_iterations {
+        while iterations < self.max_iterations {
             iterations += 1;
             let Some((index, rule, captures)) = self
                 .rules
@@ -86,7 +97,7 @@ impl ExprGroup {
                     RuleShift::Next => next_index = 0,
                     RuleShift::Last => break,
                     RuleShift::End => return Ok(Rewrite::EndUri(uri)),
-                    RuleShift::Skip(shift) => next_index += *shift as usize,
+                    RuleShift::Skip(shift) => next_index += *shift as usize + 1,
                 }
                 continue;
             }
@@ -94,13 +105,13 @@ impl ExprGroup {
                 match resolve {
                     RuleResolve::Status(status) => return Ok(Rewrite::StatusCode(*status)),
                     RuleResolve::Redirect(status) => {
-                        return Ok(Rewrite::StatusCode(*status));
+                        return Ok(Rewrite::Redirect(uri, *status));
                     }
                 }
             }
         }
 
-        match iterations >= max_iterations {
+        match iterations >= self.max_iterations {
             true => Err(EngineError::TooManyIterations),
             false => Ok(Rewrite::Uri(uri)),
         }
@@ -129,12 +140,14 @@ impl FromStr for ExpressionList {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut list = Vec::new();
         let mut group: Vec<Expression> = Vec::new();
-        for line in s.trim().split('\n').filter(|s| s.starts_with("//")) {
+        for line in s
+            .split('\n')
+            .map(|s| s.trim())
+            .filter(|s| !s.starts_with("//"))
+        {
             if line.is_empty() {
-                if !group.is_empty() {
-                    list.push(group.clone());
-                    group.clear();
-                }
+                list.push(group.clone());
+                group.clear();
                 continue;
             }
             let expr = Expression::from_str(line)?;
@@ -144,17 +157,15 @@ impl FromStr for ExpressionList {
                         .last()
                         .is_some_and(|e| matches!(e, Expression::Rule(_))))
             {
-                if !group.is_empty() {
-                    list.push(group.clone());
-                    group.clear();
-                }
+                list.push(group.clone());
+                group.clear();
             }
             group.push(expr);
         }
         if !group.is_empty() {
             list.push(group);
         }
-        Ok(Self(list))
+        Ok(Self(list.into_iter().filter(|g| !g.is_empty()).collect()))
     }
 }
 
@@ -177,9 +188,91 @@ impl FromStr for Expression {
             .ok_or(ExpressionError::MissingIdentifier)?;
         match ident.to_lowercase().as_str() {
             "rule" | "rewrite" | "rewriterule" => Ok(Self::Rule(Rule::from_str(expr)?)),
-            "cond" | "condition" | "rewritecond" => Ok(Self::Condition(Condition::from_str(s)?)),
-            "state" | "engine" | "rewriteengine" => Ok(Self::State(State::from_str(s)?)),
-            _ => Err(ExpressionError::InvalidIdentifier),
+            "cond" | "condition" | "rewritecond" => Ok(Self::Condition(Condition::from_str(expr)?)),
+            "state" | "engine" | "rewriteengine" => Ok(Self::State(State::from_str(expr)?)),
+            _ => Err(ExpressionError::InvalidIdentifier(s.to_owned())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_groups() {
+        let groups = ExpressionList::from_str(
+            r#"
+            RewriteCond /var/www/%{REQUEST_URI} !-f
+            RewriteRule ^/file/(.*)$ /file2/$1  [R=303]
+
+            RewriteRule /rewrite/[A-Z]+ /redirect/$1 [NC,R]
+            RewriteCond ${SERVER_PORT} -eq 4000
+            RewriteRule /(.*) /index.php?path=$1
+            RewriteEngine off
+            RewriteRule / - [F]
+        "#,
+        )
+        .unwrap()
+        .groups();
+
+        assert_eq!(groups.len(), 4);
+        assert_eq!(groups[0].conditions.len(), 1);
+        assert_eq!(groups[0].rules.len(), 1);
+        assert_eq!(groups[0].enabled, true);
+        assert_eq!(groups[1].conditions.len(), 0);
+        assert_eq!(groups[1].rules.len(), 1);
+        assert_eq!(groups[1].enabled, true);
+        assert_eq!(groups[2].conditions.len(), 1);
+        assert_eq!(groups[2].rules.len(), 1);
+        assert_eq!(groups[2].enabled, true);
+        assert_eq!(groups[3].conditions.len(), 0);
+        assert_eq!(groups[3].rules.len(), 1);
+        assert_eq!(groups[3].enabled, false);
+    }
+
+    #[test]
+    fn test_rules() {
+        let groups = ExpressionList::from_str(
+            r#"
+            RewriteRule /skip      /new/test      [S=2]
+            RewriteRule /skip      -              [F]
+            RewriteRule /new/(.*)  /index?page=$1 [R=303]
+            RewriteRule /new/(.*)  -              [G]
+            RewriteRule /(.*)      /new/$1        [N]
+        "#,
+        )
+        .unwrap()
+        .groups();
+
+        assert_eq!(groups.len(), 1);
+        let group = &groups[0];
+
+        let r = group.rewrite("/skip".to_owned()).unwrap();
+        assert!(matches!(r, Rewrite::StatusCode(code) if code == 410));
+
+        let r = group.rewrite("/hello/world".to_owned()).unwrap();
+        assert!(
+            matches!(r, Rewrite::Redirect(uri, sc) if uri == "/index?page=hello/world" && sc == 303)
+        );
+    }
+
+    #[test]
+    fn test_overflow() {
+        let groups = ExpressionList::from_str(
+            r#"
+            RewriteRule /skip/forbidden -       [F]
+            RewriteRule /skip/gone      -       [G]
+            RewriteRule /(.*)           /new/$1 [N]
+        "#,
+        )
+        .unwrap()
+        .groups();
+
+        assert_eq!(groups.len(), 1);
+        let group = &groups[0];
+
+        let r = group.rewrite("/skip".to_owned());
+        assert!(matches!(r, Err(EngineError::TooManyIterations)));
     }
 }

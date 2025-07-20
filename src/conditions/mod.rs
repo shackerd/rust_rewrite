@@ -71,7 +71,7 @@ impl FromStr for CondFlagList {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if !s.starts_with('[') || !s.ends_with(']') {
-            return Err(CondError::FlagsMissingBrackets);
+            return Err(CondError::FlagsMissingBrackets(s.to_owned()));
         }
         let flags = s[1..s.len() - 1]
             .split(',')
@@ -101,7 +101,7 @@ impl FromStr for CondFlag {
         match s.to_lowercase().as_str() {
             "i" | "insensitive" | "nc" | "nocase" => Ok(Self::NoCase),
             "or" | "ornext" => Ok(Self::Or),
-            _ => Err(CondError::InvalidFlag),
+            _ => Err(CondError::InvalidFlag(s.to_owned())),
         }
     }
 }

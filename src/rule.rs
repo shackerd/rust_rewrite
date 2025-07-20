@@ -78,8 +78,8 @@ impl FromStr for Rule {
             Some(flags) => RuleFlagList::from_str(flags)?.0,
             None => Vec::new(),
         };
-        if items.next().is_some() {
-            return Err(RuleError::InvalidSuffix);
+        if let Some(next) = items.next() {
+            return Err(RuleError::InvalidSuffix(next.to_owned()));
         }
         let insense = flags.iter().any(|f| f.insensitive());
         Ok(Self {
@@ -99,7 +99,7 @@ impl FromStr for RuleFlagList {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if !s.starts_with('[') || !s.ends_with(']') {
-            return Err(RuleError::FlagsMissingBrackets);
+            return Err(RuleError::FlagsMissingBrackets(s.to_owned()));
         }
         let flags = s[1..s.len() - 1]
             .split(',')
@@ -131,7 +131,7 @@ fn parse_int(s: &str, default: u16) -> Result<u16, RuleError> {
 fn parse_status(s: &str, default: u16) -> Result<u16, RuleError> {
     let status = parse_int(s, default)?;
     match !(100..600).contains(&status) {
-        true => Err(RuleError::InvalidFlagStatus),
+        true => Err(RuleError::InvalidFlagStatus(s.to_owned())),
         false => Ok(status),
     }
 }
@@ -202,7 +202,7 @@ impl FromStr for RuleFlag {
             "f" | "forbidden" => Ok(Self::Resolve(RuleResolve::Status(403))),
             "g" | "gone" => Ok(Self::Resolve(RuleResolve::Status(410))),
             "" => Ok(Self::Resolve(RuleResolve::Status(parse_status(s, 403)?))),
-            _ => Err(RuleError::InvalidFlag),
+            _ => Err(RuleError::InvalidFlag(s.to_owned())),
         }
     }
 }
