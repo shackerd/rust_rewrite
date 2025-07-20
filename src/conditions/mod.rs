@@ -1,18 +1,18 @@
 use std::str::FromStr;
 
-mod context;
+pub mod context;
 mod error;
 mod matcher;
 mod parse;
 
-pub use context::{DateCtx, EngineCtx, RequestCtx, ServerCtx};
-pub use error::CondError;
-pub use matcher::{Compare, FileTest, Match, Pattern, Value};
+use matcher::{Match, Value};
 
-/// Implements the logic and processing for a single re-write condition
-/// defined witin `mod_rewrite`.
+pub use context::EngineCtx;
+pub use error::CondError;
+
+/// Singular `RewriteCond` expression definition.
 ///
-/// It contains an expression [`Match`] and additional [`CondFlag`]s that
+/// It contains an expression matcher and additional flags that
 /// define how the rule behaves within the rule-engine.
 ///
 /// Supports a subset of [offical](https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritecond)
@@ -87,7 +87,7 @@ impl FromStr for CondFlagList {
 /// Supported `mod_rewrite` [`Condition`] flags that modify
 /// the conditions behavior.
 #[derive(Clone, Debug)]
-pub enum CondFlag {
+enum CondFlag {
     NoCase,
     Or,
 }

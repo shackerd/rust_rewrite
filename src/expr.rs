@@ -14,7 +14,7 @@ pub enum Rewrite {
     StatusCode(u16),
 }
 
-/// Logical grouping of [`Expression`]s.
+/// Logical grouping of [`Expression`] instances.
 ///
 /// Associates a list [`Condition`] instances that guard
 /// rewrites defined by [`Rule`].
@@ -102,7 +102,7 @@ impl ExprGroup {
 /// Separates [`Expression`] instances into groups by their
 /// association to previous [`Condition`] rules and whitespace.
 #[derive(Debug)]
-pub struct ExpressionList(pub Vec<Vec<Expression>>);
+pub(crate) struct ExpressionList(pub Vec<Vec<Expression>>);
 
 impl ExpressionList {
     /// Convert [`ExpressionList`] into Vec of [`ExprGroup`]

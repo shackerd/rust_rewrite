@@ -8,6 +8,8 @@ use super::context::EngineCtx;
 use super::error::CondError;
 use super::parse::*;
 
+/// Abstraction for String value that supports toggling case
+/// insensitivity when evaluating [`Match`] comparisons
 #[derive(Debug, PartialEq)]
 pub enum Value {
     NoCase(UniCase<String>),
@@ -25,6 +27,10 @@ impl Deref for Value {
 }
 
 impl Value {
+    /// Build new [`Value`] instance with the configured settings.
+    ///
+    /// Replaces all variables using [`EngineCtx`] before configuring
+    /// for case-sensitive settings.
     pub fn new(s: &str, nocase: bool, ctx: &EngineCtx) -> Self {
         let value = ctx.replace_all(s);
         match nocase {
@@ -32,12 +38,16 @@ impl Value {
             false => Self::Case(value),
         }
     }
+
+    /// [`String::starts_with`](std::string::String) abstraction.
     pub fn starts_with(&self, s: &Value) -> bool {
         match self {
             Self::Case(c) => c.starts_with(s.deref()),
             Self::NoCase(c) => c.starts_with(s.deref()),
         }
     }
+
+    /// [`String::starts_with`](std::string::String) abstraction.
     pub fn ends_with(&self, s: &Value) -> bool {
         match self {
             Self::Case(c) => c.ends_with(s.deref()),
@@ -46,6 +56,10 @@ impl Value {
     }
 }
 
+/// Compiled condition logical expression.
+///
+/// Supports `CondPattern`, integer comparisons, and file attribute tests
+/// with negated variations.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Match {
     Pattern(String, Pattern, String),
@@ -103,6 +117,7 @@ impl FromStr for Match {
     }
 }
 
+/// `CondPattern` expression definition.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Pattern {
     Preceeds,
@@ -113,6 +128,7 @@ pub enum Pattern {
 }
 
 impl Pattern {
+    /// Evaluate `CondPattern` according to defintion.
     pub fn matches(&self, first: Value, second: Value) -> bool {
         match self {
             Self::Preceeds | Self::PreceedsOrEquals => first.starts_with(&second),
@@ -136,6 +152,7 @@ impl FromStr for Pattern {
     }
 }
 
+/// Integer comparison expression definition.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Compare {
     Equal,
@@ -147,6 +164,7 @@ pub enum Compare {
 }
 
 impl Compare {
+    /// Evaluate integer expression according to definition.
     pub fn compare(&self, first: Value, second: Value) -> bool {
         let Some(first) = first.parse::<i32>().ok() else {
             return false;
@@ -180,6 +198,7 @@ impl FromStr for Compare {
     }
 }
 
+/// File attribute-test expression definition.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileTest {
     Dir,
@@ -190,6 +209,7 @@ pub enum FileTest {
 }
 
 impl FileTest {
+    /// Evaluate file attribute-test according to defintion.
     pub fn matches(&self, path: Value) -> bool {
         let path = PathBuf::from(path.deref());
         match self {

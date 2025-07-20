@@ -4,8 +4,7 @@ use regex::{Captures, Regex, RegexBuilder};
 
 use super::error::RuleError;
 
-/// Implements the logic and processing for a single re-write expression
-/// defined within `mod_rewrite`.
+/// Singular `Rewrite` expression definition.
 ///
 /// It contains a regex pattern to match against a request uri,
 /// a rewrite string that expands into the new uri, and additional
@@ -24,13 +23,13 @@ impl Rule {
     /// Try to match the rewrite expression pattern to the specified uri.
     ///
     /// Returns a [`Captures`](regex::Captures) group on successful match.
-    /// Pass the result into [`RewriteRule::rewrite`] to update the uri.
+    /// Pass the result into [`Rule::rewrite`] to update the uri.
     #[inline]
     pub fn try_match<'a>(&self, uri: &'a str) -> Option<Captures<'a>> {
         self.pattern.captures(uri)
     }
 
-    /// Takes the result of [`RewriteRule::try_match`] to rewrite
+    /// Takes the result of [`Rule::try_match`] to rewrite
     /// the uri according to the configured rule expression.
     #[inline]
     pub fn rewrite(&self, captures: Captures<'_>) -> String {
@@ -42,7 +41,7 @@ impl Rule {
     /// Retrieves the associated [`RuleShift`] defined in the
     /// expressions flags if any is present.
     #[inline]
-    pub fn shift(&self) -> Option<&RuleShift> {
+    pub(crate) fn shift(&self) -> Option<&RuleShift> {
         self.flags.iter().find_map(|f| match f {
             RuleFlag::Shift(shift) => Some(shift),
             _ => None,
@@ -52,7 +51,7 @@ impl Rule {
     /// Retrieve the associated [`RuleResolve`] defined in the
     /// expressions flags if any is present.
     #[inline]
-    pub fn resolve(&self) -> Option<&RuleResolve> {
+    pub(crate) fn resolve(&self) -> Option<&RuleResolve> {
         self.flags.iter().find_map(|f| match f {
             RuleFlag::Resolve(resolve) => Some(resolve),
             _ => None,
@@ -149,7 +148,7 @@ pub enum RuleResolve {
     Status(u16),
 }
 
-/// Flag Modifiers to a [`RewriteRule`] expression.
+/// Flag Modifiers to a [`Rule`] expression.
 ///
 /// Supports a subset of [official](https://httpd.apache.org/docs/current/rewrite/flags.html)
 /// mod_rewrite flags.

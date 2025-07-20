@@ -5,10 +5,12 @@ mod error;
 mod expr;
 mod rule;
 
+use expr::ExpressionList;
+
 pub use conditions::*;
 pub use error::{EngineError, ExpressionError, RuleError};
-pub use expr::{ExprGroup, Expression, ExpressionList, Rewrite};
-pub use rule::{Rule, RuleFlag, RuleMod, RuleResolve, RuleShift};
+pub use expr::{ExprGroup, Expression, Rewrite};
+pub use rule::Rule;
 
 /// Expression Engine for Proccessing Rewrite Rules
 ///

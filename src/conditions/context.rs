@@ -1,3 +1,9 @@
+//! Variable expansion and assignment contexts used in
+//! [`Condition`](super::Condition) evalulation.
+//!
+//! Designed as a subset of [official](https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritecond)
+//! `RewriteCond` back-references.
+
 use std::{fmt::Debug, net::SocketAddr};
 
 use once_cell::sync::Lazy;
@@ -12,7 +18,8 @@ macro_rules! get {
 }
 
 macro_rules! setter {
-    ($key:ident) => {
+    ($key:ident, $ref:ident) => {
+        #[doc = concat!("Assign value for `", stringify!($ref), "` variable")]
         pub fn $key(mut self, $key: String) -> Self {
             self.$key = Some($key);
             self
@@ -20,6 +27,8 @@ macro_rules! setter {
     };
 }
 
+/// Global Context used for variable replacement in
+/// [`Condition`](super::Condition) expressions.
 #[derive(Debug, Default)]
 pub struct EngineCtx<'a> {
     date: Option<&'a DateCtx>,
@@ -70,6 +79,7 @@ impl<'a> EngineCtx<'a> {
     }
 }
 
+/// All variables and references associated with `TIME_` prefix.
 #[derive(Debug)]
 pub struct DateCtx {
     time_year: String,
@@ -120,6 +130,8 @@ impl Default for DateCtx {
     }
 }
 
+/// All variables and references associated with `SERVER_` prefix
+/// and other server attributes.
 #[derive(Debug, Default)]
 pub struct ServerCtx {
     document_root: Option<String>,
@@ -132,12 +144,13 @@ pub struct ServerCtx {
 }
 
 impl ServerCtx {
-    setter!(document_root);
-    setter!(server_admin);
-    setter!(server_name);
-    setter!(server_protocol);
-    setter!(server_software);
+    setter!(document_root, DOCUMENT_ROOT);
+    setter!(server_admin, SERVER_ADMIN);
+    setter!(server_name, SERVER_NAME);
+    setter!(server_protocol, SERVER_PROTOCOL);
+    setter!(server_software, SERVER_SOFTWARE);
 
+    /// Assign value for `SERVER_ADDR`, and `SERVER_PORT` variables.
     pub fn server_addr(mut self, server_addr: impl Into<SocketAddr>) -> Self {
         let addr: SocketAddr = server_addr.into();
         self.server_addr = Some(addr.to_string());
@@ -162,6 +175,8 @@ impl ServerCtx {
     }
 }
 
+/// All variables and references associated with `REMOTE_` prefix
+/// and other request variables.
 #[derive(Debug)]
 pub struct RequestCtx {
     auth_type: Option<String>,
@@ -176,12 +191,13 @@ pub struct RequestCtx {
 }
 
 impl RequestCtx {
-    setter!(auth_type);
-    setter!(path_info);
-    setter!(query_string);
-    setter!(request_method);
-    setter!(request_uri);
+    setter!(auth_type, AUTH_TYPE);
+    setter!(path_info, PATH_INFO);
+    setter!(query_string, QUERY_STRING);
+    setter!(request_method, REQUEST_METHOD);
+    setter!(request_uri, REQUEST_URI);
 
+    /// Assign value for `REMOTE_ADDR`, `REMOTE_HOST`, and `REMOTE_PORT` variables.
     pub fn remote_addr(mut self, remote_addr: impl Into<SocketAddr>) -> Self {
         let addr: SocketAddr = remote_addr.into();
         self.remote_addr = Some(addr.to_string());
