@@ -33,6 +33,8 @@ pub use expr::{ExprGroup, Expression, Rewrite};
 pub use extra::State;
 pub use rule::Rule;
 
+//TODO: ignore query-string when doing eval and rewrite
+
 /// Expression Engine for Proccessing Rewrite Rules
 ///
 /// Supports a subset of [official](https://httpd.apache.org/docs/current/mod/mod_rewrite.html)
@@ -91,7 +93,7 @@ impl Engine {
     ///
     /// See [`Engine::rewrite_ctx`] for more details.
     #[inline]
-    pub fn rewrite(&self, uri: String) -> Result<Rewrite, EngineError> {
+    pub fn rewrite(&self, uri: &str) -> Result<Rewrite, EngineError> {
         let mut ctx = EngineCtx::default();
         self.rewrite_ctx(uri, &mut ctx)
     }
@@ -105,18 +107,15 @@ impl Engine {
     /// If your engine is using `RewriteCond` rules, you will want to use this
     /// method with a complete `EngineCtx`. See [`Engine::rewrite`] for a simpler
     /// alternative.
-    pub fn rewrite_ctx(
-        &self,
-        mut uri: String,
-        ctx: &mut EngineCtx,
-    ) -> Result<Rewrite, EngineError> {
+    pub fn rewrite_ctx(&self, uri: &str, ctx: &mut EngineCtx) -> Result<Rewrite, EngineError> {
+        let (mut uri, query) = extra::split_query(uri);
         for group in self.groups.iter().filter(|g| g.match_conditions(ctx)) {
-            uri = match group.rewrite(uri)? {
+            uri = match group.rewrite(&uri)? {
                 Rewrite::Uri(uri) => uri,
-                status => return Ok(status),
+                status => return Ok(status.with_query(query)),
             };
         }
-        Ok(Rewrite::Uri(uri))
+        Ok(Rewrite::Uri(uri).with_query(query))
     }
 }
 

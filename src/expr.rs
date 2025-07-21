@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use crate::extra;
+
 use super::conditions::{Condition, EngineCtx};
 use super::error::{EngineError, ExpressionError};
 use super::extra::State;
@@ -14,6 +16,17 @@ pub enum Rewrite {
     EndUri(String),
     Redirect(String, u16),
     StatusCode(u16),
+}
+
+impl Rewrite {
+    pub(crate) fn with_query(self, query: &str) -> Self {
+        match self {
+            Self::Uri(uri) => Self::Uri(extra::join_query(uri, query)),
+            Self::EndUri(uri) => Self::EndUri(extra::join_query(uri, query)),
+            Self::Redirect(uri, sc) => Self::Redirect(extra::join_query(uri, query), sc),
+            Self::StatusCode(sc) => Self::StatusCode(sc),
+        }
+    }
 }
 
 /// Logical grouping of [`Expression`] instances.
@@ -75,9 +88,11 @@ impl ExprGroup {
 
     /// Evaluate the given URI against the configured [`Rule`] definitions
     /// and generate a [`Rewrite`] response.
-    pub fn rewrite(&self, mut uri: String) -> Result<Rewrite, EngineError> {
+    pub fn rewrite(&self, uri: &str) -> Result<Rewrite, EngineError> {
         let mut next_index = 0;
         let mut iterations = 0;
+
+        let (mut uri, query) = extra::split_query(uri);
         while iterations < self.max_iterations {
             iterations += 1;
             let Some((index, rule, new_uri)) = self
@@ -96,7 +111,7 @@ impl ExprGroup {
                 match shift {
                     RuleShift::Next => next_index = 0,
                     RuleShift::Last => break,
-                    RuleShift::End => return Ok(Rewrite::EndUri(uri)),
+                    RuleShift::End => return Ok(Rewrite::EndUri(uri).with_query(query)),
                     RuleShift::Skip(shift) => next_index += *shift as usize,
                 }
                 continue;
@@ -105,7 +120,7 @@ impl ExprGroup {
                 match resolve {
                     RuleResolve::Status(status) => return Ok(Rewrite::StatusCode(*status)),
                     RuleResolve::Redirect(status) => {
-                        return Ok(Rewrite::Redirect(uri, *status));
+                        return Ok(Rewrite::Redirect(uri, *status).with_query(query));
                     }
                 }
             }
@@ -113,7 +128,7 @@ impl ExprGroup {
 
         match iterations >= self.max_iterations {
             true => Err(EngineError::TooManyIterations),
-            false => Ok(Rewrite::Uri(uri)),
+            false => Ok(Rewrite::Uri(uri).with_query(query)),
         }
     }
 }
@@ -248,13 +263,34 @@ mod tests {
         assert_eq!(groups.len(), 1);
         let group = &groups[0];
 
-        let r = group.rewrite("/skip".to_owned()).unwrap();
+        let r = group.rewrite("/skip").unwrap();
         assert!(matches!(r, Rewrite::StatusCode(code) if code == 410));
 
-        let r = group.rewrite("/hello/world".to_owned()).unwrap();
+        let r = group.rewrite("/hello/world").unwrap();
         assert!(
             matches!(r, Rewrite::Redirect(uri, sc) if uri == "/index?page=hello%2Fworld" && sc == 303)
         );
+    }
+
+    #[test]
+    fn test_query() {
+        let groups = ExpressionList::from_str(
+            r#"
+            RewriteRule /static/(.*) /files/$1 [NE,L]
+            RewriteRule /(.*)        /index?page=$1
+        "#,
+        )
+        .unwrap()
+        .groups();
+
+        assert_eq!(groups.len(), 1);
+        let group = &groups[0];
+
+        let r = group.rewrite("/static/1/2?a=b").unwrap();
+        assert!(matches!(r, Rewrite::Uri(uri) if uri == "/files/1/2?a=b"));
+
+        let r = group.rewrite("/1/2/3?a=b").unwrap();
+        assert!(matches!(r, Rewrite::Uri(uri) if uri == "/index?page=1%2F2%2F3&a=b"));
     }
 
     #[test]
@@ -272,7 +308,7 @@ mod tests {
         assert_eq!(groups.len(), 1);
         let group = &groups[0];
 
-        let r = group.rewrite("/skip".to_owned());
+        let r = group.rewrite("/skip");
         assert!(matches!(r, Err(EngineError::TooManyIterations)));
     }
 }

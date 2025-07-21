@@ -21,3 +21,11 @@ percent-encoding = "2"
 regex-automata = "0.4"
 thiserror = "2"
 unicase = "2"
+
+[dev-dependencies]
+criterion = "0.5"
+pprof = { version = "0.15.0", features = ["criterion", "flamegraph"] }
+
+[[bench]]
+name = "expr"
+harness = false

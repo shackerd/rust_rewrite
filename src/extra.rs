@@ -2,6 +2,26 @@ use std::str::FromStr;
 
 use super::error::ExpressionError;
 
+#[inline]
+pub(crate) fn split_query(uri: &str) -> (String, &str) {
+    uri.split_once('?')
+        .map(|(b, q)| (b.to_owned(), q))
+        .unwrap_or_else(|| (uri.to_owned(), ""))
+}
+
+#[inline]
+pub(crate) fn join_query(mut uri: String, query: &str) -> String {
+    if query.is_empty() {
+        return uri;
+    }
+    match uri.contains('?') {
+        true => uri.push('&'),
+        false => uri.push('?'),
+    }
+    uri.push_str(query);
+    uri
+}
+
 /// Singular `RewriteEngine` expression definition.
 ///
 /// Considered a breakpoint for [`ExprGroup`](super::ExprGroup)
