@@ -3,19 +3,19 @@
 <!-- prettier-ignore-start -->
 
 [![crates.io](https://img.shields.io/crates/v/mod_rewrite?label=latest)](https://crates.io/crates/mod_rewrite)
-[![Documentation](https://docs.rs/mod_rewrite/badge.svg?version=0.1.2)](https://docs.rs/mod_rewrite/0.1.2)
+[![Documentation](https://docs.rs/mod_rewrite/badge.svg?version=0.1.1)](https://docs.rs/mod_rewrite/0.1.1)
 ![Version](https://img.shields.io/badge/rustc-1.72+-ab6000.svg)
 ![License](https://img.shields.io/crates/l/mod_rewrite.svg)
 <br />
-[![dependency status](https://deps.rs/crate/mod_rewrite/0.1.2/status.svg)](https://deps.rs/crate/mod_rewrite/0.1.2)
+[![dependency status](https://deps.rs/crate/mod_rewrite/0.1.1/status.svg)](https://deps.rs/crate/mod_rewrite/0.1.1)
 [![Download](https://img.shields.io/crates/d/mod_rewrite.svg)](https://crates.io/crates/mod_rewrite)
 
 <!-- prettier-ignore-end -->
 
 <!-- cargo-rdme start -->
 
-Apache2 [`mod_rewrite`](https://httpd.apache.org/docs/current/mod/mod_rewrite.html)
-reimplemented in rust for rust web-services.
+Dynamic routing rewrite library inspired by apache
+[`mod_rewrite`](https://httpd.apache.org/docs/current/mod/mod_rewrite.html).
 
 ## Examples
 
