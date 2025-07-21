@@ -20,8 +20,8 @@ macro_rules! get {
 macro_rules! setter {
     ($key:ident, $ref:ident) => {
         #[doc = concat!("Assign value for `", stringify!($ref), "` variable")]
-        pub fn $key(mut self, $key: &str) -> Self {
-            self.$key = Some($key.to_owned());
+        pub fn $key<S: Into<String>>(mut self, $key: S) -> Self {
+            self.$key = Some($key.into());
             self
         }
     };
@@ -43,12 +43,6 @@ pub trait ContextProvider {
 pub struct EngineCtx<'a>(Vec<Box<dyn ContextProvider + 'a>>);
 
 impl<'a> EngineCtx<'a> {
-    /// Build [`EngineCtx`] with [`EnvCtx`] already builtin
-    pub fn with_env() -> Self {
-        let ctx = Self::default();
-        ctx.with_ctx(EnvCtx::default())
-    }
-
     /// Assign new sub-context to the complete [`EngineCtx`]
     pub fn push_ctx(&mut self, ctx: impl ContextProvider + 'a) -> &mut Self {
         self.0.push(Box::new(ctx));
@@ -59,6 +53,16 @@ impl<'a> EngineCtx<'a> {
     pub fn with_ctx(mut self, ctx: impl ContextProvider + 'a) -> Self {
         self.push_ctx(ctx);
         self
+    }
+
+    /// Add [`EnvCtx`] when building [`EngineCtx`]
+    pub fn with_env(self) -> Self {
+        self.with_ctx(EnvCtx::default())
+    }
+
+    /// Add [`DateCtx`] when building [`EngineCtx`]
+    pub fn with_time(self) -> Self {
+        self.with_ctx(DateCtx::new())
     }
 
     /// Return the equivalent value associated with the specified
@@ -88,7 +92,7 @@ impl<'a> EngineCtx<'a> {
 /// Environment Variable Context.
 ///
 /// Provides variables and references associated with `ENV:` prefix.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct EnvCtx(HashMap<String, String>);
 
 impl ContextProvider for EnvCtx {
@@ -107,7 +111,7 @@ impl ContextProvider for EnvCtx {
 }
 
 /// All variables and references associated with `TIME_` prefix.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DateCtx {
     time_year: String,
     time_month: String,
@@ -135,6 +139,12 @@ impl DateCtx {
     }
 }
 
+impl Default for DateCtx {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContextProvider for DateCtx {
     fn fill(&mut self, key: &str) -> Option<&str> {
         match key {
@@ -151,15 +161,9 @@ impl ContextProvider for DateCtx {
     }
 }
 
-impl Default for DateCtx {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// All variables and references associated with `SERVER_` prefix
 /// and other server attributes.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ServerCtx {
     document_root: Option<String>,
     server_addr: Option<String>,
@@ -188,6 +192,14 @@ impl ServerCtx {
         self.server_port = Some(addr.port().to_string());
         Ok(self)
     }
+
+    /// Assign value for `SERVER_ADDR`, and `SERVER_PORT` variables if address is Some.
+    pub fn maybe_server_addr<A: ToSocketAddrs>(self, server_addr: Option<A>) -> io::Result<Self> {
+        match server_addr {
+            Some(addr) => self.server_addr(addr),
+            None => Ok(self),
+        }
+    }
 }
 
 impl ContextProvider for ServerCtx {
@@ -207,7 +219,7 @@ impl ContextProvider for ServerCtx {
 
 /// All variables and references associated with `REMOTE_` prefix
 /// and other request variables.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct RequestCtx {
     auth_type: Option<String>,
     ipv6: Option<String>,
@@ -222,6 +234,7 @@ pub struct RequestCtx {
 
 impl RequestCtx {
     setter!(auth_type, AUTH_TYPE);
+    setter!(ipv6, IPV6);
     setter!(path_info, PATH_INFO);
     setter!(query_string, QUERY_STRING);
     setter!(request_method, REQUEST_METHOD);
@@ -237,6 +250,15 @@ impl RequestCtx {
         self.remote_host = Some(addr.ip().to_string());
         self.remote_port = Some(addr.port().to_string());
         Ok(self)
+    }
+
+    /// Assign value for `REMOTE_ADDR`, `REMOTE_HOST`, and `REMOTE_PORT`
+    /// variables if address is Some.
+    pub fn maybe_remote_addr<A: ToSocketAddrs>(self, remote_addr: Option<A>) -> io::Result<Self> {
+        match remote_addr {
+            Some(addr) => self.remote_addr(addr),
+            None => Ok(self),
+        }
     }
 }
 

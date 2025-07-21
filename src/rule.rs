@@ -76,7 +76,7 @@ impl Rule {
                     Some(span) => &uri[span],
                 };
                 if noescape {
-                    return dst.push_str(&string);
+                    return dst.push_str(string);
                 }
                 let s = utf8_percent_encode(string, ESCAPE).to_string();
                 dst.push_str(&s);
