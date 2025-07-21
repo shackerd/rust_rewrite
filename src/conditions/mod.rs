@@ -25,7 +25,7 @@ pub struct Condition {
 
 impl Condition {
     /// Evaluate if the rewrite condition and return boolean result.
-    pub fn is_met(&self, ctx: &EngineCtx) -> bool {
+    pub fn is_met(&self, ctx: &mut EngineCtx) -> bool {
         let nocase = self.flags.iter().any(|f| matches!(f, CondFlag::NoCase));
         match &self.matcher {
             Match::Pattern(v1, pt, v2) => {
@@ -126,12 +126,12 @@ mod tests {
         assert!(matches!(cond.flags.get(0), Some(CondFlag::NoCase)));
 
         let mut req = RequestCtx::default().request_uri("/Test");
-        let ctx = EngineCtx::default().request_ctx(&req);
-        assert!(cond.is_met(&ctx));
+        let mut ctx = EngineCtx::default().with_ctx(req);
+        assert!(cond.is_met(&mut ctx));
 
-        req = req.request_uri("/Not");
-        let ctx = EngineCtx::default().request_ctx(&req);
-        assert!(!cond.is_met(&ctx));
+        req = RequestCtx::default().request_uri("/Not");
+        let mut ctx = EngineCtx::default().with_ctx(req);
+        assert!(!cond.is_met(&mut ctx));
     }
 
     #[test]
@@ -146,12 +146,12 @@ mod tests {
         assert_eq!(cond.flags.len(), 0);
 
         let mut srv = ServerCtx::default().server_addr("127.0.0.1:4001").unwrap();
-        let ctx = EngineCtx::default().server_ctx(&srv);
-        assert!(cond.is_met(&ctx));
+        let mut ctx = EngineCtx::default().with_ctx(srv);
+        assert!(cond.is_met(&mut ctx));
 
         srv = ServerCtx::default().server_addr("127.0.0.1:3999").unwrap();
-        let ctx = EngineCtx::default().server_ctx(&srv);
-        assert!(!cond.is_met(&ctx));
+        let mut ctx = EngineCtx::default().with_ctx(srv);
+        assert!(!cond.is_met(&mut ctx));
     }
 
     #[test]
@@ -166,11 +166,11 @@ mod tests {
 
         let current = std::env::current_dir().unwrap().join("src").join("lib.rs");
         let mut req = RequestCtx::default().request_uri(current.to_str().unwrap());
-        let ctx = EngineCtx::default().request_ctx(&req);
-        assert!(!cond.is_met(&ctx));
+        let mut ctx = EngineCtx::default().with_ctx(req);
+        assert!(!cond.is_met(&mut ctx));
 
-        req = req.request_uri("/invalid");
-        let ctx = EngineCtx::default().request_ctx(&req);
-        assert!(cond.is_met(&ctx));
+        req = RequestCtx::default().request_uri("/invalid");
+        let mut ctx = EngineCtx::default().with_ctx(req);
+        assert!(cond.is_met(&mut ctx));
     }
 }

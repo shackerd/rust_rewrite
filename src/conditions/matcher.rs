@@ -31,7 +31,7 @@ impl Value {
     ///
     /// Replaces all variables using [`EngineCtx`] before configuring
     /// for case-sensitive settings.
-    pub fn new(s: &str, nocase: bool, ctx: &EngineCtx) -> Self {
+    pub fn new(s: &str, nocase: bool, ctx: &mut EngineCtx) -> Self {
         let value = ctx.replace_all(s);
         match nocase {
             true => Self::NoCase(UniCase::new(value)),

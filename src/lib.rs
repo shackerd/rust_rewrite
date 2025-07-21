@@ -92,8 +92,8 @@ impl Engine {
     /// See [`Engine::rewrite_ctx`] for more details.
     #[inline]
     pub fn rewrite(&self, uri: String) -> Result<Rewrite, EngineError> {
-        let ctx = EngineCtx::default();
-        self.rewrite_ctx(uri, &ctx)
+        let mut ctx = EngineCtx::default();
+        self.rewrite_ctx(uri, &mut ctx)
     }
 
     /// Evaluate the given URI against the configured [`ExprGroup`] instances
@@ -105,7 +105,11 @@ impl Engine {
     /// If your engine is using `RewriteCond` rules, you will want to use this
     /// method with a complete `EngineCtx`. See [`Engine::rewrite`] for a simpler
     /// alternative.
-    pub fn rewrite_ctx(&self, mut uri: String, ctx: &EngineCtx) -> Result<Rewrite, EngineError> {
+    pub fn rewrite_ctx(
+        &self,
+        mut uri: String,
+        ctx: &mut EngineCtx,
+    ) -> Result<Rewrite, EngineError> {
         for group in self.groups.iter().filter(|g| g.match_conditions(ctx)) {
             uri = match group.rewrite(uri)? {
                 Rewrite::Uri(uri) => uri,

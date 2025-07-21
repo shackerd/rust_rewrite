@@ -1,8 +1,39 @@
 use std::str::FromStr;
 
-use regex::{Captures, Regex, RegexBuilder};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use regex_automata::{
+    MatchKind,
+    meta::{self, Regex},
+    util,
+};
 
 use super::error::RuleError;
+
+// https://url.spec.whatwg.org/#percent-encoded-bytes
+const ESCAPE: &AsciiSet = &CONTROLS
+    .add(b'~')
+    .add(b' ') // fragment encoding
+    .add(b'\'')
+    .add(b'"')
+    .add(b'`')
+    .add(b'#') // query encoding
+    .add(b'<')
+    .add(b'>')
+    .add(b'?') // path encoding
+    .add(b'^')
+    .add(b'{')
+    .add(b'}')
+    .add(b'/') // user-info encoding
+    .add(b':')
+    .add(b';')
+    .add(b'=')
+    .add(b'@')
+    .add(b'[')
+    .add(b']')
+    .add(b'$') // component encoding
+    .add(b'&')
+    .add(b'+')
+    .add(b',');
 
 /// Singular `RewriteRule` expression definition.
 ///
@@ -22,28 +53,38 @@ pub struct Rule {
 impl Rule {
     /// Try to match the rewrite expression pattern to the specified uri.
     ///
-    /// Returns a [`Captures`](regex::Captures) group on successful match.
-    /// Pass the result into [`Rule::rewrite`] to update the uri.
-    #[inline]
-    pub fn try_match<'a>(&self, uri: &'a str) -> Option<Captures<'a>> {
-        self.pattern.captures(uri)
-    }
-
-    /// Takes the result of [`Rule::try_match`] to rewrite
-    /// the uri according to the configured rule expression.
-    #[inline]
-    pub fn rewrite(&self, captures: Captures<'_>) -> String {
-        let mut uri = String::new();
-        captures.expand(&self.rewrite, &mut uri);
-        uri
-    }
-
-    /// Combines [`Rule::try_match`] with [`Rule::rewrite`] in one step.
-    ///
     /// Produces a new re-written string if the rewrite rule matched.
     #[inline]
     pub fn try_rewrite(&self, uri: &str) -> Option<String> {
-        Some(self.rewrite(self.try_match(uri)?))
+        let mut caps = self.pattern.create_captures();
+        self.pattern.captures(uri, &mut caps);
+        if !caps.is_match() {
+            return None;
+        }
+
+        let noescape = self
+            .flags
+            .iter()
+            .any(|f| matches!(f, RuleFlag::Mod(RuleMod::NoEscape)));
+
+        let mut dst = String::new();
+        util::interpolate::string(
+            &self.rewrite,
+            |index, dst| {
+                let string = match caps.get_group(index) {
+                    None => return,
+                    Some(span) => &uri[span],
+                };
+                if noescape {
+                    return dst.push_str(&string);
+                }
+                let s = utf8_percent_encode(string, ESCAPE).to_string();
+                dst.push_str(&s);
+            },
+            |name| caps.group_info().to_index(caps.pattern()?, name),
+            &mut dst,
+        );
+        Some(dst)
     }
 
     /// Retrieves the associated [`RuleShift`] defined in the
@@ -81,11 +122,24 @@ impl FromStr for Rule {
         if let Some(next) = items.next() {
             return Err(RuleError::InvalidSuffix(next.to_owned()));
         }
-        let insense = flags.iter().any(|f| f.insensitive());
+
+        let insense = flags
+            .iter()
+            .any(|f| matches!(f, RuleFlag::Mod(RuleMod::NoCase)));
+        let regex = Regex::builder()
+            .configure(
+                meta::Config::new()
+                    .nfa_size_limit(Some(10 * (1 << 20)))
+                    .hybrid_cache_capacity(2 * (1 << 20))
+                    .match_kind(MatchKind::LeftmostFirst)
+                    .utf8_empty(true),
+            )
+            .syntax(util::syntax::Config::new().case_insensitive(insense))
+            .build(pattern)
+            .map_err(|err| RuleError::InvalidRegex(err.to_string()))?;
+
         Ok(Self {
-            pattern: RegexBuilder::new(pattern)
-                .case_insensitive(insense)
-                .build()?,
+            pattern: regex,
             rewrite,
             flags,
         })
@@ -110,9 +164,15 @@ impl FromStr for RuleFlagList {
         if flags.is_empty() {
             return Err(RuleError::FlagsEmpty);
         }
-        let meta = flags.iter().filter(|f| f.is_shift()).count();
-        let response = flags.iter().filter(|f| f.is_resolve()).count();
-        if (meta + response) > 1 {
+        let num_meta = flags
+            .iter()
+            .filter(|f| matches!(f, RuleFlag::Shift(_)))
+            .count();
+        let num_response = flags
+            .iter()
+            .filter(|f| matches!(f, RuleFlag::Resolve(_)))
+            .count();
+        if (num_meta + num_response) > 1 {
             return Err(RuleError::FlagsMutuallyExclusive);
         }
         Ok(Self(flags))
@@ -149,6 +209,7 @@ pub enum RuleShift {
 #[derive(Clone, Debug)]
 pub enum RuleMod {
     NoCase,
+    NoEscape,
 }
 
 /// [`RuleFlag`] subtype declaring a final http-response resolution
@@ -169,21 +230,6 @@ pub enum RuleFlag {
     Resolve(RuleResolve),
 }
 
-impl RuleFlag {
-    #[inline]
-    fn insensitive(&self) -> bool {
-        matches!(self, Self::Mod(RuleMod::NoCase))
-    }
-    #[inline]
-    fn is_shift(&self) -> bool {
-        matches!(self, Self::Shift(_))
-    }
-    #[inline]
-    fn is_resolve(&self) -> bool {
-        matches!(self, Self::Resolve(_))
-    }
-}
-
 impl FromStr for RuleFlag {
     type Err = RuleError;
 
@@ -198,6 +244,7 @@ impl FromStr for RuleFlag {
             "n" | "next" => Ok(Self::Shift(RuleShift::Next)),
             "s" | "skip" => Ok(Self::Shift(RuleShift::Skip(parse_int(s, 1)?))),
             "i" | "insensitive" | "nc" | "nocase" => Ok(Self::Mod(RuleMod::NoCase)),
+            "ne" | "noescape" => Ok(Self::Mod(RuleMod::NoEscape)),
             "r" | "redirect" => Ok(Self::Resolve(RuleResolve::Redirect(parse_status(s, 302)?))),
             "f" | "forbidden" => Ok(Self::Resolve(RuleResolve::Status(403))),
             "g" | "gone" => Ok(Self::Resolve(RuleResolve::Status(410))),
@@ -228,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_simple_replace() {
-        let rule = Rule::from_str(r" ^/file/(.*)$ /new/$1 ").unwrap();
+        let rule = Rule::from_str(r" ^/file/(.*)$ /new/$1 [NE]").unwrap();
         assert_eq!(rule.try_rewrite("/no/match"), None);
         assert_eq!(
             rule.try_rewrite("/file/match"),

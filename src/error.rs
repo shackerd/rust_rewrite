@@ -37,7 +37,7 @@ pub enum RuleError {
     MissingPattern,
 
     #[error("Invalid regex in rule rewrite pattern")]
-    InvalidRegex(#[from] regex::Error),
+    InvalidRegex(String),
 
     #[error("Rule is missing a rewrite expression")]
     MissingRewrite,

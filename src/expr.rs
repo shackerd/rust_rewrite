@@ -65,7 +65,7 @@ impl ExprGroup {
     /// Check all relevant [`Condition`] expressions are met.
     ///
     /// This method guards [`ExprGroup::rewrite`].
-    pub fn match_conditions(&self, ctx: &EngineCtx) -> bool {
+    pub fn match_conditions(&self, ctx: &mut EngineCtx) -> bool {
         if !self.enabled {
             return false;
         }
@@ -80,24 +80,24 @@ impl ExprGroup {
         let mut iterations = 0;
         while iterations < self.max_iterations {
             iterations += 1;
-            let Some((index, rule, captures)) = self
+            let Some((index, rule, new_uri)) = self
                 .rules
                 .iter()
-                .skip(next_index)
                 .enumerate()
-                .find_map(|(i, r)| Some((i, r, r.try_match(&uri)?)))
+                .skip(next_index)
+                .find_map(|(i, r)| Some((i, r, r.try_rewrite(&uri)?)))
             else {
                 break;
             };
 
-            uri = rule.rewrite(captures);
-            next_index = index;
+            uri = new_uri;
+            next_index = index + 1;
             if let Some(shift) = rule.shift() {
                 match shift {
                     RuleShift::Next => next_index = 0,
                     RuleShift::Last => break,
                     RuleShift::End => return Ok(Rewrite::EndUri(uri)),
-                    RuleShift::Skip(shift) => next_index += *shift as usize + 1,
+                    RuleShift::Skip(shift) => next_index += *shift as usize,
                 }
                 continue;
             }
@@ -239,7 +239,7 @@ mod tests {
             RewriteRule /skip      -              [F]
             RewriteRule /new/(.*)  /index?page=$1 [R=303]
             RewriteRule /new/(.*)  -              [G]
-            RewriteRule /(.*)      /new/$1        [N]
+            RewriteRule /(.*)      /new/$1        [N,NE]
         "#,
         )
         .unwrap()
@@ -253,7 +253,7 @@ mod tests {
 
         let r = group.rewrite("/hello/world".to_owned()).unwrap();
         assert!(
-            matches!(r, Rewrite::Redirect(uri, sc) if uri == "/index?page=hello/world" && sc == 303)
+            matches!(r, Rewrite::Redirect(uri, sc) if uri == "/index?page=hello%2Fworld" && sc == 303)
         );
     }
 

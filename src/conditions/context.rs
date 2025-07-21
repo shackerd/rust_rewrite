@@ -4,10 +4,10 @@
 //! Designed as a subset of [official](https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritecond)
 //! `RewriteCond` back-references.
 
-use std::{fmt::Debug, io, net::ToSocketAddrs};
+use std::{collections::HashMap, fmt::Debug, io, net::ToSocketAddrs};
 
 use once_cell::sync::Lazy;
-use regex::Regex;
+use regex_automata::meta::Regex;
 
 static MATCHER: Lazy<Regex> = Lazy::new(|| Regex::new(r"%\{\w+\}").unwrap());
 
@@ -27,55 +27,82 @@ macro_rules! setter {
     };
 }
 
-/// Global Context used for variable replacement in
-/// [`Condition`](super::Condition) expressions.
-#[derive(Debug, Default)]
-pub struct EngineCtx<'a> {
-    date: Option<&'a DateCtx>,
-    request: Option<&'a RequestCtx>,
-    server: Option<&'a ServerCtx>,
+/// Abstraction for `RewriteCond` variable providers
+///
+/// Supply objects implementing this trait to [`EngineCtx`]
+/// and pass it into [`Engine::rewrite_ctx`](crate::Engine::rewrite_ctx)
+/// in order to pass variables to [`Condition`](crate::Condition)
+/// rules.
+pub trait ContextProvider {
+    fn fill(&mut self, key: &str) -> Option<&str>;
 }
 
+/// Global Context used for variable replacement in
+/// [`Condition`](super::Condition) expressions.
+#[derive(Default)]
+pub struct EngineCtx<'a>(Vec<Box<dyn ContextProvider + 'a>>);
+
 impl<'a> EngineCtx<'a> {
-    /// Assign [`DateCtx`] sub-context to the complete [`EngineCtx`]
-    pub fn date_ctx(mut self, date: &'a DateCtx) -> Self {
-        self.date = Some(date);
+    /// Build [`EngineCtx`] with [`EnvCtx`] already builtin
+    pub fn with_env() -> Self {
+        let ctx = Self::default();
+        ctx.with_ctx(EnvCtx::default())
+    }
+
+    /// Assign new sub-context to the complete [`EngineCtx`]
+    pub fn push_ctx(&mut self, ctx: impl ContextProvider + 'a) -> &mut Self {
+        self.0.push(Box::new(ctx));
         self
     }
 
-    /// Assign [`RequestCtx`] sub-context to the complete [`EngineCtx`]
-    pub fn request_ctx(mut self, request: &'a RequestCtx) -> Self {
-        self.request = Some(request);
-        self
-    }
-
-    /// Assign [`ServerCtx`] sub-context to the complete [`EngineCtx`]
-    pub fn server_ctx(mut self, server: &'a ServerCtx) -> Self {
-        self.server = Some(server);
+    /// Assign new sub-context when building [`EngineCtx`]
+    pub fn with_ctx(mut self, ctx: impl ContextProvider + 'a) -> Self {
+        self.push_ctx(ctx);
         self
     }
 
     /// Return the equivalent value associated with the specified
     /// variable expression.
-    pub fn fill(&self, expr: &str) -> &str {
-        self.date
-            .and_then(|ctx| ctx.fill(expr))
-            .or(self.request.and_then(|ctx| ctx.fill(expr)))
-            .or(self.server.and_then(|ctx| ctx.fill(expr)))
+    #[inline]
+    pub fn fill(&mut self, expr: &str) -> &str {
+        self.0
+            .iter_mut()
+            .find_map(|ctx| ctx.fill(expr))
             .unwrap_or("")
     }
 
     /// Replace all variables within expression with data
     /// specified within with the [`EngineCtx`] and return
     /// the updated string.
-    pub fn replace_all(&self, expr: &str) -> String {
+    pub fn replace_all(&mut self, expr: &str) -> String {
         MATCHER
             .find_iter(expr)
-            .map(|c| c.as_str().to_owned())
+            .map(|c| expr[c.range()].to_owned())
             .fold(expr.to_owned(), |acc, key| {
                 let attr = key.trim_matches(|c| ['%', '{', '}'].contains(&c));
                 acc.replace(&key, self.fill(attr))
             })
+    }
+}
+
+/// Environment Variable Context.
+///
+/// Provides variables and references associated with `ENV:` prefix.
+#[derive(Debug, Default)]
+pub struct EnvCtx(HashMap<String, String>);
+
+impl ContextProvider for EnvCtx {
+    fn fill(&mut self, key: &str) -> Option<&str> {
+        let (prefix, env) = key.split_once(':')?;
+        if self.0.contains_key(key) {
+            return self.0.get(key).map(|v| v.as_str());
+        }
+        if prefix.to_lowercase() != "env" {
+            return None;
+        }
+        let val = std::env::var(env).ok()?;
+        self.0.insert(key.to_string(), val);
+        self.0.get(key).map(|v| v.as_str())
     }
 }
 
@@ -108,8 +135,8 @@ impl DateCtx {
     }
 }
 
-impl DateCtx {
-    fn fill(&self, key: &str) -> Option<&str> {
+impl ContextProvider for DateCtx {
+    fn fill(&mut self, key: &str) -> Option<&str> {
         match key {
             "TIME_YEAR" => Some(self.time_year.as_str()),
             "TIME_MONTH" => Some(self.time_month.as_str()),
@@ -163,8 +190,8 @@ impl ServerCtx {
     }
 }
 
-impl ServerCtx {
-    fn fill(&self, key: &str) -> Option<&str> {
+impl ContextProvider for ServerCtx {
+    fn fill(&mut self, key: &str) -> Option<&str> {
         match key {
             "DOCUMENT_ROOT" => get!(self.document_root),
             "SERVER_ADMIN" => get!(self.server_admin),
@@ -213,8 +240,8 @@ impl RequestCtx {
     }
 }
 
-impl RequestCtx {
-    fn fill(&self, key: &str) -> Option<&str> {
+impl ContextProvider for RequestCtx {
+    fn fill(&mut self, key: &str) -> Option<&str> {
         match key {
             "AUTH_TYPE" => get!(self.auth_type),
             "IPV6" => get!(self.ipv6),
