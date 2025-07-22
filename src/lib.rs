@@ -12,7 +12,7 @@
 //!   RewriteRule /blocked/(.*)  -            [F]
 //! "#).expect("failed to process rules");
 //!
-//! let uri = "http://localhost/file/my/document.txt".to_owned();
+//! let uri = "http://localhost/file/my/document.txt";
 //! let result = engine.rewrite(uri).unwrap();
 //! println!("{result:?}");
 //! ```
@@ -33,8 +33,6 @@ pub use expr::{ExprGroup, Expression, Rewrite};
 pub use extra::State;
 pub use rule::Rule;
 
-//TODO: ignore query-string when doing eval and rewrite
-
 /// Expression Engine for Proccessing Rewrite Rules
 ///
 /// Supports a subset of [official](https://httpd.apache.org/docs/current/mod/mod_rewrite.html)
@@ -52,7 +50,7 @@ pub use rule::Rule;
 ///     RewriteRule /blocked/(.*)  -            [F]
 /// "#).expect("failed to process rules");
 ///
-/// let uri = "http://localhost/file/my/document.txt".to_owned();
+/// let uri = "http://localhost/file/my/document.txt";
 /// let result = engine.rewrite(uri).unwrap();
 /// println!("{result:?}");
 /// ```
@@ -78,10 +76,10 @@ impl Engine {
     /// Parse additonal [`Expression`]s to append as [`ExprGroup`]s to the
     /// existing engine.
     #[inline]
-    pub fn add_rules(&mut self, rules: &str) -> Result<(), ExpressionError> {
+    pub fn add_rules(&mut self, rules: &str) -> Result<&mut Self, ExpressionError> {
         let groups = ExpressionList::from_str(rules)?.groups();
         self.groups.extend(groups);
-        Ok(())
+        Ok(self)
     }
 
     /// Evaluate the given URI against the configured [`ExprGroup`] instances
@@ -125,5 +123,52 @@ impl FromStr for Engine {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let groups = ExpressionList::from_str(s)?.groups();
         Ok(Self { groups })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_groups() {
+        let mut engine = Engine::default();
+        engine
+            .add_rules(
+                r#"
+            RewriteRule /static/(.*) /files/$1 [NE,L]
+
+            RewriteRule /(.*)        /index?page=$1
+        "#,
+            )
+            .unwrap();
+
+        let r = engine.rewrite("/static/1/2").unwrap();
+        assert!(matches!(r, Rewrite::Uri(uri) if uri == "/index?page=files%2F1%2F2"));
+
+        let r = engine.rewrite("/1/2/3?a=b").unwrap();
+        println!("{r:?}");
+        assert!(matches!(r, Rewrite::Uri(uri) if uri == "/index?page=1%2F2%2F3&a=b"));
+    }
+
+    #[test]
+    fn test_query() {
+        let mut engine = Engine::default();
+        engine
+            .add_rules(
+                r#"
+            RewriteRule /static/(.*) /files/$1 [NE,END]
+
+            RewriteRule /(.*)        /index?page=$1
+        "#,
+            )
+            .unwrap();
+
+        let r = engine.rewrite("/static/1/2?a=b").unwrap();
+        assert!(matches!(r, Rewrite::EndUri(uri) if uri == "/files/1/2?a=b"));
+
+        let r = engine.rewrite("/1/2/3?a=b").unwrap();
+        println!("{r:?}");
+        assert!(matches!(r, Rewrite::Uri(uri) if uri == "/index?page=1%2F2%2F3&a=b"));
     }
 }

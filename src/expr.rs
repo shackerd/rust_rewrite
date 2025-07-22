@@ -19,6 +19,7 @@ pub enum Rewrite {
 }
 
 impl Rewrite {
+    /// Pass query-string back into uri after rewrite evaluation
     pub(crate) fn with_query(self, query: &str) -> Self {
         match self {
             Self::Uri(uri) => Self::Uri(extra::join_query(uri, query)),
