@@ -54,7 +54,7 @@ pub use rule::Rule;
 /// let result = engine.rewrite(uri).unwrap();
 /// println!("{result:?}");
 /// ```
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Engine {
     groups: Vec<ExprGroup>,
 }

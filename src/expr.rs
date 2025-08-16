@@ -34,7 +34,7 @@ impl Rewrite {
 ///
 /// Associates a list [`Condition`] instances that guard
 /// rewrites defined by [`Rule`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprGroup {
     conditions: Vec<Condition>,
     rules: Vec<Rule>,
